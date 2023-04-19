@@ -57,6 +57,53 @@
                     }
                 }
             }
+        },
+        "/user/{id}/avatar": {
+            "get": {
+                "tags": [
+                    "User"
+                ],
+                "summary": "GetUserAvatar",
+                "description": "Request User avatar",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "id",
+                        "description": "Users unique ID. Default type should be String.",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {}
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "schema": {
+                            "properties": {
+                                "avatar": {
+                                    "type": "string",
+                                    "description": "Avatar of the User. Default type should be String."
+                                }
+                            },
+                            "type": "object",
+                            "required": [
+                                "avatar"
+                            ]
+                        }
+                    }
+                }
+            }
         }
     }
 }
