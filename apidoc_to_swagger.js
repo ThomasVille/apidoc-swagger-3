@@ -119,6 +119,16 @@ function transferApidocParamsToSwaggerBody(apiDocParams, parameterInBody) {
         const type = i.type ? i.type.toLowerCase() : "string"
         const key = i.field
         const nestedName = createNestedName(i.field)
+
+        // For simple fields, the name of the field is in `objectName`.
+        // For instance the field `password` leads to:
+        // - objectName = ""
+        // - propertyName = "password"
+        //
+        // For nested fields, `objectName` is the path to the nested field and `propertyName` is the name of the nested field.
+        // For instance the field `credentials.password.hash` leads to:
+        // - objectName = "credentials.password"
+        // - propertyName = "hash"
         const { objectName = '', propertyName } = nestedName
 
         if (type.endsWith('object[]')) {
