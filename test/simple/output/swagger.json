@@ -6,7 +6,7 @@
         "description": ""
     },
     "paths": {
-        "/user/id": {
+        "/user/{id}": {
             "get": {
                 "tags": [
                     "User"
