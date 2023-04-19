@@ -1,11 +1,15 @@
 var _ = require('lodash');
 var { pathToRegexp } = require('path-to-regexp');
-const { debug, log } = require('winston');
-const GenerateSchema = require('generate-schema')
+const GenerateSchema = require('generate-schema');
 
+var log;
+
+function setLogger(logger) {
+    log = logger;
+}
 
 var swagger = {
-    openapi: "3.0.0",
+    openapi: '3.0.3',
     info: {},
     paths: {}
 };
@@ -71,27 +75,41 @@ function extractPaths(apidocJson) {  // cf. https://swagger.io/specification/#pa
 
 function mapHeaderItem(i) {
     return {
+        schema: {
+            type: 'string',
+            default: i.defaultValue
+        },
         in: 'header',
         name: i.field,
         description: removeTags(i.description),
         required: !i.optional,
-        schema: {
-            type: 'string',
-            default: i.defaultValue
-        }
+        default: i.defaultValue
     }
 }
 
 function mapQueryItem(i) {
     return {
-        in: 'query',
-        name: i.field,
-        description: removeTags(i.description),
-        required: !i.optional,
         schema: {
             type: 'string',
             default: i.defaultValue
-        }
+        },
+        in: 'query',
+        name: i.field,
+        description: removeTags(i.description),
+        required: !i.optional
+    }
+}
+
+function mapPathItem(i) {
+    return {
+        schema: {
+            type: 'string',
+            default: i.defaultValue
+        },
+        in: 'path',
+        name: i.field,
+        description: removeTags(i.description),
+        required: !i.optional
     }
 }
 
@@ -112,29 +130,23 @@ function mapQueryItem(i) {
 function transferApidocParamsToSwaggerBody(apiDocParams, parameterInBody) {
 
     let mountPlaces = {
-        '': parameterInBody['schema']
+        '': Object.values(parameterInBody)[0]['schema']
     }
 
     apiDocParams.forEach(i => {
-        const type = i.type ? i.type.toLowerCase() : "string"
+        if (/(<p>)*\[\w+\[\w+/.test(i.description)) return; // handle api doc error for deep nested fields
+        const type = i.type.toLowerCase()
         const key = i.field
-        const nestedName = createNestedName(i.field)
+        const nestedName = createNestedName(i.field, '')
+        const { objectName, propertyName } = nestedName
 
-        // For simple fields, the name of the field is in `objectName`.
-        // For instance the field `password` leads to:
-        // - objectName = ""
-        // - propertyName = "password"
-        //
-        // For nested fields, `objectName` is the path to the nested field and `propertyName` is the name of the nested field.
-        // For instance the field `credentials.password.hash` leads to:
-        // - objectName = "credentials.password"
-        // - propertyName = "hash"
-        const { objectName = '', propertyName } = nestedName
+        if (!mountPlaces[objectName]) mountPlaces[objectName] = { type: 'object', properties: {} };
+        else if (!mountPlaces[objectName]['properties']) mountPlaces[objectName]['properties'] = {};
 
-        if (type.endsWith('object[]')) {
+        if (type === 'object[]' || type === 'array') {
             // if schema(parsed from example) doesn't has this constructure, init
             if (!mountPlaces[objectName]['properties'][propertyName]) {
-                mountPlaces[objectName]['properties'][propertyName] = { type: 'array', items: { type: 'object', properties: {}, required: [] } }
+                mountPlaces[objectName]['properties'][propertyName] = { type: 'array', items: { type: 'object', properties: {} } }
             }
 
             // new mount point
@@ -145,7 +157,6 @@ function transferApidocParamsToSwaggerBody(apiDocParams, parameterInBody) {
                 mountPlaces[objectName]['properties'][propertyName] = {
                     items: {
                         type: type.slice(0, -2), description: i.description,
-                        // default: i.defaultValue,
                         example: i.defaultValue
                     },
                     type: 'array'
@@ -154,20 +165,15 @@ function transferApidocParamsToSwaggerBody(apiDocParams, parameterInBody) {
         } else if (type === 'object') {
             // if schema(parsed from example) doesn't has this constructure, init
             if (!mountPlaces[objectName]['properties'][propertyName]) {
-                mountPlaces[objectName]['properties'][propertyName] = { type: 'object', properties: {}, required: [] }
+                mountPlaces[objectName]['properties'][propertyName] = { type: 'object', properties: {} }
             }
 
             // new mount point
             mountPlaces[key] = mountPlaces[objectName]['properties'][propertyName]
         } else {
-            if (!(objectName in mountPlaces)) {
-                throw new Error(`The nested field '${objectName}.${propertyName}' cannot be defined before the field '${objectName}'`)
-            }
-
             mountPlaces[objectName]['properties'][propertyName] = {
                 type,
-                description: i.description,
-                default: i.defaultValue,
+                description: i.description
             }
         }
         if (!i.optional) {
@@ -185,71 +191,34 @@ function transferApidocParamsToSwaggerBody(apiDocParams, parameterInBody) {
 function generateProps(verb) {
     const pathItemObject = {}
     const parameters = generateParameters(verb)
-    const body = generateBody(verb)
     const responses = generateResponses(verb)
     pathItemObject[verb.type] = {
         tags: [verb.group],
         summary: removeTags(verb.name),
-        description: removeTags(verb.title),
-        consumes: [
-            "application/json"
-        ],
-        produces: [
-            "application/json"
-        ],
+        description: removeTags(verb.title || '') + (verb.description ? ' - ' + removeTags(verb.description) : ''),
         parameters,
-        requestBody: {
-            content: {
-                'application/json': body
-            }
-        },
         responses
+    }
+
+    if (verb.type === 'post' || verb.type === 'put' || verb.type === 'patch') {
+        pathItemObject[verb.type].requestBody = generateRequestBody(verb, verb.body)
     }
 
     return pathItemObject
 }
 
-function generateBody(verb) {
-    const mixedBody = []
-
-    if (verb && verb.parameter && verb.parameter.fields) {
-        const Parameter = verb.parameter.fields.Parameter || []
-        const _body = verb.parameter.fields.Body || []
-        mixedBody.push(..._body)
-        if (!(verb.type === 'get')) {
-            mixedBody.push(...Parameter)
-        }
-    }
-
-    let body = {}
-    if (verb.type === 'post' || verb.type === 'put') {
-        body = generateRequestBody(verb, mixedBody)
-    }
-
-    return body
-}
-
 function generateParameters(verb) {
-    const mixedQuery = []
-    const mixedBody = []
-    const header = verb && verb.header && verb.header.fields.Header || []
-
-    if (verb && verb.parameter && verb.parameter.fields) {
-        const Parameter = verb.parameter.fields.Parameter || []
-        const _query = verb.parameter.fields.Query || []
-        const _body = verb.parameter.fields.Body || []
-        mixedQuery.push(..._query)
-        mixedBody.push(..._body)
-        if (verb.type === 'get') {
-            mixedQuery.push(...Parameter)
-        } else {
-            mixedBody.push(...Parameter)
-        }
-    }
 
     const parameters = []
-    parameters.push(...mixedQuery.map(mapQueryItem))
+
+    const header = verb && verb.header && verb.header.fields.Header || []
     parameters.push(...header.map(mapHeaderItem))
+
+    if (verb && verb.parameter && verb.parameter.fields) {
+        const _path = verb.parameter.fields.Parameter || []
+        parameters.push(..._path.map(mapPathItem))
+    }
+
     parameters.push(...(verb.query || []).map(mapQueryItem))
 
     return parameters
@@ -257,57 +226,94 @@ function generateParameters(verb) {
 
 function generateRequestBody(verb, mixedBody) {
     const bodyParameter = {
-        schema: {
-            properties: {},
-            type: 'object',
-            required: []
+        content: {
+            'application/json': {
+                schema: {
+                    properties: {},
+                    type: 'object'
+                }
+            }
         }
     }
 
     if (_.get(verb, 'parameter.examples.length') > 0) {
-        for (const example of verb.parameter.examples) {
+        bodyParameter.content['application/json'].examples = {};
+        for (let i = 0; i < verb.parameter.examples.length; i++) {
+            const example = verb.parameter.examples[i];
             const { code, json } = safeParseJson(example.content)
             const schema = GenerateSchema.json(example.title, json)
-            bodyParameter.schema = schema
+            delete schema.$schema;
+            bodyParameter.content['application/json'].schema = schema
             bodyParameter.description = example.title
+            bodyParameter.content['application/json'].examples[i.toString()] = {
+                summary: example.title,
+                value: example.content
+            }
         }
     }
 
-    transferApidocParamsToSwaggerBody(mixedBody, bodyParameter)
+    if (mixedBody)
+        transferApidocParamsToSwaggerBody(mixedBody, bodyParameter.content)
 
     return bodyParameter
 }
 
 function generateResponses(verb) {
     const success = verb.success
-    const responses = {
-        200: {
-            schema: {
-                properties: {},
-                type: 'object',
-                required: []
+    const error = verb.error
+    const responses = {}
+    if (success && success.examples) {
+        for (const example of success.examples) {
+            generateResponse(example, responses);
+        }
+    }
+    if (error && error.examples) {
+        for (const example of error.examples) {
+            generateResponse(example, responses);
+        }
+    }
+
+    let code2xx = Object.keys(responses).filter((r => (c = parseInt(r), 200 <= c && c < 300)))[0];
+    if (!code2xx) {
+        mountResponseSpecSchema(verb, responses);
+        responses[200] = {
+            content: {
+                'application/json': {
+                    schema: {
+                        properties: {},
+                        type: 'object',
+                        required: []
+                    }
+                }
             }
         }
     }
-    if (success && success.examples && success.examples.length > 0) {
-        for (const example of success.examples) {
-            const { code, json } = safeParseJson(example.content)
-            const schema = GenerateSchema.json(example.title, json)
-            responses[code] = { schema, description: example.title }
-        }
 
-    }
-
-    mountResponseSpecSchema(verb, responses)
+    mountResponseSpecSchema(verb, responses, code2xx)
 
     return responses
 }
 
-function mountResponseSpecSchema(verb, responses) {
+function generateResponse(example, responses) {
+    const { code, json } = safeParseJson(example.content);
+    const schema = GenerateSchema.json(example.title, json);
+    delete schema.$schema;
+    responses[code] = {
+        content: {
+            'application/json': {
+                example: example.content,
+                schema
+            }
+        },
+        description: example.title
+    };
+}
+
+function mountResponseSpecSchema(verb, responses, code2XX) {
     // if (verb.success && verb.success['fields'] && verb.success['fields']['Success 200']) {
-    if (_.get(verb, 'success.fields.Success 200')) {
-        const apidocParams = verb.success['fields']['Success 200']
-        responses[200] = transferApidocParamsToSwaggerBody(apidocParams, responses[200])
+    if (_.get(verb, 'success.fields.Success ' + code2XX)) {
+        const apidocParams = verb.success['fields']['Success ' + code2XX]
+        responses[code2XX].content = transferApidocParamsToSwaggerBody(apidocParams, responses[code2XX].content)
     }
 }
 
@@ -317,7 +323,7 @@ function safeParseJson(content) {
     let startingIndex = 0;
     for (let i = 0; i < content.length; i++) {
         const character = content[i];
-        if (character === '{' || character === '[') {
+        if (character === '{' || character === '[' || character === '"') {
             startingIndex = i;
             break;
         }
@@ -327,13 +333,17 @@ function safeParseJson(content) {
     const mayContentString = content.slice(startingIndex)
 
     const mayCodeSplit = mayCodeString.trim().split(' ')
-    const code = mayCodeSplit.length === 3 ? parseInt(mayCodeSplit[1]) : 200
+    let code = 200;
+    if (mayCodeSplit.length > 1 && mayCodeSplit[0].toLowerCase().startsWith("http")) {
+        let c = parseInt(mayCodeSplit[1]);
+        if (!isNaN(c)) code = c;
+    }
 
     let json = {}
     try {
         json = JSON.parse(mayContentString)
     } catch (error) {
-        console.warn('parse %o with error', mayContentString, error)
+        console.debug('JSON parse error', content)
     }
 
     return {
@@ -345,10 +355,14 @@ function safeParseJson(content) {
 function createNestedName(field, defaultObjectName) {
     let propertyName = field;
     let objectName;
-    let propertyNames = field.split(".");
-    if (propertyNames && propertyNames.length > 1) {
-        propertyName = propertyNames.pop();
-        objectName = propertyNames.join(".");
+    if (field.includes('.')) {
+        const fieldRegex = /\.(\w+)$/;
+        propertyName = field.match(fieldRegex)[1];
+        objectName = field.replace(fieldRegex, '');
+    } else if (field.includes('[')) {
+        const fieldRegex = /\[(\w+)\]/;
+        propertyName = field.match(fieldRegex)[1];
+        objectName = field.replace(fieldRegex, '')
     }
 
     return {
@@ -368,5 +382,5 @@ function groupByUrl(apidocJson) {
 }
 
 module.exports = {
-    toSwagger: toSwagger
+    toSwagger, setLogger
 };

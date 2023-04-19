@@ -1,11 +1,9 @@
 const fs = require('fs')
 const path = require('path')
-const apidoc = require('apidoc-core')
+const apidoc = require('apidoc');
 const winston = require('winston');
 
 const apidoc_to_swagger = require('./apidoc_to_swagger');
-
-apidoc.setGeneratorInfos({ name: 'name', time: new Date(), version: '0.0.1', url: 'xxx url' })
 
 
 function generateLog(options) {
@@ -25,15 +23,12 @@ function generateLog(options) {
 function main(options) {
     options.verbose && console.log('options', options);
     const log = generateLog(options)
-    const { src, dest, verbose } = options
-    apidoc.setLogger(log)
+    apidoc_to_swagger.setLogger(log);
+    const apidocOptions = { ...options }
+    apidocOptions.dest = require('os').tmpdir() + '/oas3-tmp/'
+    fs.rmSync(apidocOptions.dest, { recursive: true, force: true }, log.debug);
 
-    var api = apidoc.parse({ ...options, log: log })
-
-    if (!api) {
-        console.log('No input data found, check your include/exclude filters');
-        return
-    }
+    var api = apidoc.createDoc(apidocOptions);
 
     var apidocData = JSON.parse(api.data);
     var projectData = JSON.parse(api.project);
@@ -46,7 +41,7 @@ function main(options) {
 
     const swagger = apidoc_to_swagger.toSwagger(apidocData, projectData)
 
-    api["swaggerData"] = JSON.stringify(swagger, null, 4);
+    api["swaggerData"] = JSON.stringify(swagger, null, '\t');
     createOutputFile(api.swaggerData, log, options)
 
     return swagger;
@@ -63,7 +58,7 @@ function createOutputFile(swaggerData, log, options) {
     //Write swagger
     log.verbose('write swagger json file: ' + options.dest + 'swagger.json');
     if (!options.simulate)
-        fs.writeFileSync(options.dest + './swagger.json', swaggerData);
+        fs.writeFileSync(options.dest + './oas3.json', swaggerData);
 }
 
 exports.main = main

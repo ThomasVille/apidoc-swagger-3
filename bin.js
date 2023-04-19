@@ -1,17 +1,5 @@
 #!/usr/bin/env node
 
-// This is used as an example in the README for:
-//    Default option value
-//    You can specify a default value for an option which takes a value.
-//
-// Example output pretending command called pizza-options (or try directly with `node options-defaults.js`)
-//
-// $ pizza-options
-// cheese: blue
-// $ pizza-options --cheese stilton
-// cheese: stilton
-
-// const commander = require('commander'); // (normal include)
 const commander = require('commander'); // include commander in git clone of commander repo
 const program = new commander.Command();
 
@@ -21,7 +9,7 @@ var argv = program
     .option('-e, --exclude-filters <exclude-filters>', 'RegEx-Filter to select files / dirs that should not be parsed (many -e can be used).', collect, [])
 
     .option('-i, --input <string[]>', 'input dir', collect, [])
-    .option('-o, --output <string>', 'enable verbose', './doc/')
+    .option('-o, --output <string>', 'enable verbose', './docs/')
     .option('--sample <string>', 'sample dir', './sample/')
     .option('-c, --config <config>', 'Path to config file or to directory containing config file (apidoc.json or apidoc.config.js).', '')
 
