@@ -150,6 +150,10 @@ function transferApidocParamsToSwaggerBody(apiDocParams, parameterInBody) {
             // new mount point
             mountPlaces[key] = mountPlaces[objectName]['properties'][propertyName]
         } else {
+            if (!(objectName in mountPlaces)) {
+                throw new Error(`The nested field '${objectName}.${propertyName}' cannot be defined before the field '${objectName}'`)
+            }
+
             mountPlaces[objectName]['properties'][propertyName] = {
                 type,
                 description: i.description,

@@ -56,6 +56,68 @@
                         }
                     }
                 }
+            },
+            "put": {
+                "tags": [
+                    "User"
+                ],
+                "summary": "UpdateUser",
+                "description": "Update User information",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "parameters": [],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "credentials": {
+                                        "properties": {
+                                            "password": {
+                                                "description": "User's password.",
+                                                "type": "string"
+                                            },
+                                            "username": {
+                                                "description": "User's username.",
+                                                "type": "string"
+                                            }
+                                        },
+                                        "required": [],
+                                        "type": "object"
+                                    },
+                                    "id": {
+                                        "description": "Users unique ID. Default type should be String.",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "id"
+                                ],
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "schema": {
+                            "properties": {
+                                "success": {
+                                    "type": "boolean",
+                                    "description": "True when the update is successful."
+                                }
+                            },
+                            "type": "object",
+                            "required": [
+                                "success"
+                            ]
+                        }
+                    }
+                }
             }
         },
         "/user/{id}/avatar": {

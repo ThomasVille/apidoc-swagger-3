@@ -18,3 +18,17 @@
  *
  * @apiSuccess avatar Avatar of the User. Default type should be String.
  */
+
+/**
+ * @api {put} /user/:id Update User information
+ * @apiName UpdateUser
+ * @apiGroup User
+ *
+ * @apiParam id Users unique ID. Default type should be String.
+ * 
+ * @apiParam {Object} [credentials] User credentials.
+ * @apiParam {String} [credentials.username] User's username.
+ * @apiParam {String} [credentials.password] User's password.
+ *
+ * @apiSuccess {Boolean} success True when the update is successful.
+ */
